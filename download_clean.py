@@ -40,8 +40,8 @@ def clean1(input, max_token_length, min_sequence_length, output):
                         if (token != ""):  # Found a token.
                             if len(token) > max_token_length:
                                 # Replace long tokens with a special symbol.
-                                print("Length {0}: {1}".format(len(token),
-                                                               token))
+                                #print("Length {0}: {1}".format(len(token),
+                                #                               token))
                                 token = LONG
                             token_sequence.append(token)
                             token = ""
@@ -53,7 +53,7 @@ def clean1(input, max_token_length, min_sequence_length, output):
                 if (token != ""):  # Final token.
                     if len(token) > max_token_length:
                         # Replace long tokens with a special symbol.
-                        print("Length {0}: {1}".format(len(token), token))
+                        #print("Length {0}: {1}".format(len(token), token))
                         token = LONG
                     token_sequence.append(token)
 
@@ -62,7 +62,8 @@ def clean1(input, max_token_length, min_sequence_length, output):
                         outfile.write(token_sequence[i] + " ")
                     outfile.write("\n")
                 else:
-                    print("Too short: ", token_sequence)
+                    #print("Too short: ", token_sequence)
+                    continue
 
 def purify(input, purity, output):
     """
@@ -80,7 +81,7 @@ def purify(input, purity, output):
                     if char.isalpha():
                         num_alpha += 1
                 if float(num_alpha) / num_nonwhite_char < purity:  # Unpure!
-                    print(line[:-1])
+                    #print(line[:-1])
                     continue
                 outfile.write(line)
 
@@ -102,7 +103,9 @@ def main(args):
 
         # Skip if the final version of this file already exists.
         final_path = os.path.join(args.outdir, name + ".processed")
-        if os.path.exists(final_path): continue
+        if os.path.exists(final_path):
+            print("Existing {0}".format(final_path))
+            continue
         subprocess.call(["touch", final_path])  # To avoid a race.
         subprocess.call(["wget", url])
         subprocess.call(["gunzip", name])
