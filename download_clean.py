@@ -10,97 +10,138 @@ import argparse
 import os
 import subprocess
 
-def clean1(input, output):
+def clean1(input, max_token_length, min_sequence_length, output):
     """
     Preliminary cleaning before passing to the Stanford tokenizer.
     1. Removes meta-data.
     2. Removes any non-ascii character.
+    3. Replaces long tokens with a special symbol.
     """
+    LONG = "<LONGER_THAN_"+str(max_token_length)+">"  # Symbol for long tokens.
     with open(input, "r") as infile:
         with open(output, "w") as outfile:
             for line in infile:
                 line = line[:-1]  # Get rid of the newline character.
                 if not line: continue  # Empty.
+                token_sequence = []
 
-                # Remove meta-data lines like the following:
-                # WARC/1.0
-                # WARC-Type: conversion
-                # WARC-Target-URI: http://news.bbc.co.uk/2/hi/africa/3414345.stm
-                # WARC-Date: 2014-08-02T09:52:13Z
-                # WARC-Record-ID:
-                # WARC-Refers-To:
-                # WARC-Block-Digest: sha1:JROHLCS5SKMBR6XY46WXREW7RXM64EJC
-                # Content-Type: text/plain
-                # Content-Length: 6724
+                # Remove meta-data lines.
+                if ((len(line) >= 4 and line[:4] == "WARC") or
+                    (len(line) >= 13 and line[:13] == "Content-Type:") or
+                    (len(line) >= 15 and line[:15] == "Content-Length:")):
+                    continue
 
-                #if (len(line) >= 4 and line[:4] == "WARC") or
-                #    (len(line) >= 13 and line[:13] == "Content-Type:") or
-                #     (len(line) >= 13 and line[:13] == "Content-Length:"):
-                #    print(line)
-                #    continue
+                # Go through each character.
+                token = ""
+                for char in line:
+                    if ord(char) >= 128: continue  # Skip non-ascii characters.
 
-                # Go through each character of the line to remove non-ascii.
-                i = 0
-                while i < len(line):
-                    if ord(line[i]) >= 128:  # Skip a non-ascii character.
-                        i += 1
-                        continue
-                    outfile.write(line[i])
-                    i += 1
-                outfile.write("\n")
+                    if (char.isspace()):
+                        if (token != ""):  # Found a token.
+                            if len(token) > max_token_length:
+                                # Replace long tokens with a special symbol.
+                                print("Length {0}: {1}".format(len(token),
+                                                               token))
+                                token = LONG
+                            token_sequence.append(token)
+                            token = ""
+                        else:  # Meaningless empty space.
+                            continue
+                    else:
+                        token += char  # Accumulating a token.
+
+                if (token != ""):  # Final token.
+                    if len(token) > max_token_length:
+                        # Replace long tokens with a special symbol.
+                        print("Length {0}: {1}".format(len(token), token))
+                        token = LONG
+                    token_sequence.append(token)
+
+                if len(token_sequence) >= min_sequence_length:
+                    for i in range(len(token_sequence)):
+                        outfile.write(token_sequence[i] + " ")
+                    outfile.write("\n")
+                else:
+                    print("Too short: ", token_sequence)
+
+def purify(input, purity, output):
+    """
+    Discards sentences where the portion of alphabetic characters among
+    non-white characters falls below (<) the purity threshold.
+    """
+    with open(input, "r") as infile:
+        with open(output, "w") as outfile:
+            for line in infile:
+                num_nonwhite_char = 0
+                num_alpha = 0
+                for char in line:
+                    if char.isspace(): continue  # Ignore white characters.
+                    num_nonwhite_char += 1
+                    if char.isalpha():
+                        num_alpha += 1
+                if float(num_alpha) / num_nonwhite_char < purity:  # Unpure!
+                    print(line[:-1])
+                    continue
+                outfile.write(line)
 
 def main(args):
+    tokenizer_path = "third_party/stanford-corenlp-full-2014-08-27"
+    assert(os.path.isdir(tokenizer_path))
+
+    # Create the output directory if it doesn't already exist.
+    if not os.path.exists(args.outdir):
+        os.makedirs(args.outdir)
+
+    # Get the URLs from the file.
     urls = [line.split()[0] for line in open(args.urls, "r")]
+
+    # For each URL, download the file and clean.
     for url in urls:
         gzname = url.rsplit("/", 1)[1]
         name = gzname.rsplit(".", 1)[0]
-        prpath = os.path.join(args.outdir, name + ".processed")
-        if os.path.exists(prpath):
-            print("Skipping: ", prpath)
-            continue
-        subprocess.call(["touch", prpath])  # First create this file to avoid a race.
+
+        # Skip if the final version of this file already exists.
+        final_path = os.path.join(args.outdir, name + ".processed")
+        if os.path.exists(final_path): continue
+        subprocess.call(["touch", final_path])  # To avoid a race.
         subprocess.call(["wget", url])
         subprocess.call(["gunzip", name])
 
-        # Only collect ascii lines of length at least 3.
+        # Do initial cleaning.
         name1 = name + ".1"
-        clean1(name, name1)
-        exit(0)
+        clean1(name, args.max_token_length, args.min_sequence_length, name1)
 
         # Run Stanford document tokenizer.
         name2 = name + ".2"
-        command2 = "java -cp 'stanford-corenlp-full-2014-08-27/*' edu.stanford.nlp.process.DocumentPreprocessor {0} > {1}".format(name1, name2)
+        command2 = "java -cp '{0}/*' edu.stanford.nlp.process.DocumentPreprocessor {1} > {2}".format(tokenizer_path, name1, name2)
         subprocess.call(command2, shell=True)
 
-        # Now that sentences are separated, discard unreasonably long sentences.
+        # Sort and remove duplicate sentences.
         name3 = name + ".3"
-        command3 = "cat {0} | awk 'NF < 150' > {1}".format(name2, name3)
-        subprocess.call(command3, shell=True)
+        sort_delete_command = "cat {0} | sort | uniq > {1}".format(name2, name3)
+        subprocess.call(sort_delete_command, shell=True)
 
-        # Sort and delete duplicate sentences.
-        name4 = name + ".4"
-        command4 = "cat {0} | sort | uniq > {1}".format(name3, name4)
-        subprocess.call(command4, shell=True)
-
-        # Remove sentences that are mostly symbols.
-        with open(prpath, "w") as outfile:
-            with open(name4, "r") as infile:
-                for line in infile:
-                    num_symbols = 0
-                    for char in line:
-                        if not char.isalnum(): num_symbols += 1
-                    if float(num_symbols) / len(line) < 0.4:
-                        outfile.write(line)
+        # Finally, only keep sentences whose non-white characters are mostly
+        # alphabetic.
+        purify(name3, args.purity, final_path)
 
         subprocess.call(["rm", "-rf", name])
         subprocess.call(["rm", "-rf", name1])
         subprocess.call(["rm", "-rf", name2])
         subprocess.call(["rm", "-rf", name3])
-        subprocess.call(["rm", "-rf", name4])
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument("urls", type=str, help="file of URLs")
     argparser.add_argument("outdir", type=str, help="output directory")
+    argparser.add_argument("--max_token_length", type=int, default=40,
+                           help="replace tokens longer than this with a special"
+                           "symbol (default: %(default)d)")
+    argparser.add_argument("--min_sequence_length", type=int, default=1,
+                           help="sequences need to be at least this long "
+                           "(default: %(default)d)")
+    argparser.add_argument("--purity", type=float, default=0.5, help="a line "
+                           "needs to have >= this portion alphabetic (excluding"
+                           " white spaces) (default: %(default)f)")
     parsed_args = argparser.parse_args()
     main(parsed_args)
