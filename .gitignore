@@ -1,0 +1,42 @@
+# Stanford package
+third_party/stanford-corenlp-full-2014-08-27
+
+# Data
+downloaded*
+wet.paths*
+
+# "._" files
+._*
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Python byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
