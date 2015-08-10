@@ -138,8 +138,8 @@ if __name__ == "__main__":
     argparser.add_argument("urls", type=str, help="file of URLs")
     argparser.add_argument("outdir", type=str, help="output directory")
     argparser.add_argument("--max_token_length", type=int, default=40,
-                           help="replace tokens longer than this with a special"
-                           "symbol (default: %(default)d)")
+                           help="replace tokens longer than this with a "
+                           "special symbol (default: %(default)d)")
     argparser.add_argument("--min_sequence_length", type=int, default=1,
                            help="sequences need to be at least this long "
                            "(default: %(default)d)")
